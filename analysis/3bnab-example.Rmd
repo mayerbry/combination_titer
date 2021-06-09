@@ -1,0 +1,113 @@
+---
+title: "3bnab Combination titers"
+output: 
+  html_document:
+    keep_md: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F)
+library(tidyverse)
+library(kableExtra)
+theme_set(theme_bw() + theme(legend.position = "top"))
+
+source(here::here("R/triple-bnab-BH-titer.R"))
+pk_dat = read_csv( here::here("data/example-pk-dat.csv")) 
+  
+```
+
+
+```{r pk-dat}
+
+pk_dat %>%
+  ggplot(aes(x = time, y = conc, color = mab)) +
+  geom_line() +
+  labs(y = "Concentration (mcg/mL)", x = "days")
+
+```
+
+
+```{r ic50-dat}
+
+IC501 = 0.05
+IC502 = 1
+IC503 = 0.1
+
+tibble(
+  virus = LETTERS[1:3],
+  bNAb1 = c(IC501, IC501, IC501),
+  bNAb2 = c(0, IC502, IC502),
+  bNAb3 = c(0, 0, IC503),
+  `description` = c("single sensitivity", "double sensitive", "triple sensitive")
+) %>%
+  kable() %>%
+  kable_styling(full_width = F) %>%
+  add_header_above(c(" " = 1, "IC50" = 3, " " = 1))
+
+```
+
+
+```{r create-pkpd-titer}
+
+
+single_sensitive = pk_dat %>%
+  dplyr::filter(mab == "bNAb1") %>%
+  mutate(single_sensitive = conc/IC501) %>%
+  gather(interaction, titer, single_sensitive) %>%
+  dplyr::select(time, interaction, titer) %>%
+  mutate(virus = "Virus A")
+
+double_sensitive = pk_dat %>%
+  dplyr::filter(mab %in% c("bNAb1", "bNAb2")) %>%
+  dplyr::select(-analyte) %>%
+  pivot_wider(values_from = conc, names_from = mab) %>%
+  mutate(titer_1 = bNAb1/IC501,
+         titer_2 = bNAb2/IC502,
+         max_single_titer = pmax(titer_1, titer_2),
+         min_single_titer = pmin(titer_1, titer_2),
+         additivity = titer_1 + titer_2,
+         BlissHill = calc_2bnab_BHtiter(titer_1, titer_2)
+         )%>%
+  gather(interaction, titer, max_single_titer:BlissHill) %>%
+  dplyr::select(time, interaction, titer) %>%
+  mutate(virus = "Virus B")
+
+triple_sensitive = pk_dat %>%
+  dplyr::select(-analyte) %>%
+  pivot_wider(values_from = conc, names_from = mab) %>%
+  mutate(
+    titer_1 = bNAb1 / IC501,
+    titer_2 = bNAb2 / IC502,
+    titer_3 = bNAb3 / IC503,
+    max_single_titer = pmax(titer_1, titer_2, titer_3),
+    min_single_titer = pmin(titer_1, titer_2, titer_3),
+    additivity = titer_1+titer_2 + titer_3,
+    BlissHill = calc_3bnab_BHtiter(titer_1, titer_2, titer_3)
+  )%>%
+  gather(interaction, titer, max_single_titer:BlissHill) %>%
+  dplyr::select(time, interaction, titer) %>%
+  mutate(virus = "Virus C")
+  
+
+all_pkpd_titer = bind_rows(single_sensitive, double_sensitive, triple_sensitive)
+
+```
+
+
+```{r}
+
+all_pkpd_titer %>%
+  mutate(interaction = factor(interaction, levels = c(
+    "single_sensitive",
+    "min_single_titer",
+    "max_single_titer",
+    "additivity",
+    "BlissHill"
+  ))) %>%
+  ggplot(aes(x = time, y = pmax(titer, 20), colour = interaction)) +
+  geom_line() +
+  scale_y_log10(breaks = c(20, 100, 1000), labels = c("<20", "100", "1000"), limits = c(NA, NA)) +
+  labs(y = "Predicted experimental ID50 titer") +
+  facet_wrap(~virus)
+
+```
