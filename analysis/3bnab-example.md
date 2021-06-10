@@ -55,4 +55,12 @@ output:
 
 
 
-![](3bnab-example_files/figure-html/unnamed-chunk-1-1.png)<!-- -->
+![](3bnab-example_files/figure-html/plt-titer-1.png)<!-- -->
+
+
+
+
+![](3bnab-example_files/figure-html/plt-ID80-1.png)<!-- -->
+
+
+![](3bnab-example_files/figure-html/plt-both-1.png)<!-- -->

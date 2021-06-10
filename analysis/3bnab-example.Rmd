@@ -9,7 +9,8 @@ output:
 knitr::opts_chunk$set(echo = F)
 library(tidyverse)
 library(kableExtra)
-theme_set(theme_bw() + theme(legend.position = "top"))
+theme_set(theme_bw() + 
+            theme(legend.position = "top", legend.box = "vertical"))
 
 source(here::here("R/triple-bnab-BH-titer.R"))
 pk_dat = read_csv( here::here("data/example-pk-dat.csv")) 
@@ -94,7 +95,7 @@ all_pkpd_titer = bind_rows(single_sensitive, double_sensitive, triple_sensitive)
 ```
 
 
-```{r}
+```{r plt-titer}
 
 all_pkpd_titer %>%
   mutate(interaction = factor(interaction, levels = c(
@@ -108,6 +109,99 @@ all_pkpd_titer %>%
   geom_line() +
   scale_y_log10(breaks = c(20, 100, 1000), labels = c("<20", "100", "1000"), limits = c(NA, NA)) +
   labs(y = "Predicted experimental ID50 titer") +
+  facet_wrap(~virus)
+
+```
+
+```{r create-pkpd-ID80}
+
+# IC80 is 4-fold higher than IC50 for Hill slope = 1
+
+IC801 = IC501 * 4
+IC802 = IC502 * 4
+IC803 = IC503 * 4
+
+single_sensitive_id80 = pk_dat %>%
+  dplyr::filter(mab == "bNAb1") %>%
+  mutate(single_sensitive = conc/IC801) %>%
+  gather(interaction, titer, single_sensitive) %>%
+  dplyr::select(time, interaction, titer) %>%
+  mutate(virus = "Virus A")
+
+double_sensitive_id80 = pk_dat %>%
+  dplyr::filter(mab %in% c("bNAb1", "bNAb2")) %>%
+  dplyr::select(-analyte) %>%
+  pivot_wider(values_from = conc, names_from = mab) %>%
+  mutate(titer_1 = bNAb1/IC801,
+         titer_2 = bNAb2/IC802,
+         max_single_titer = pmax(titer_1, titer_2),
+         min_single_titer = pmin(titer_1, titer_2),
+         additivity = titer_1 + titer_2,
+         BlissHill = calc_2bnab_BHtiter(titer_1, titer_2, titer_target = 0.8)
+         )%>%
+  gather(interaction, titer, max_single_titer:BlissHill) %>%
+  dplyr::select(time, interaction, titer) %>%
+  mutate(virus = "Virus B")
+
+triple_sensitive_id80 = pk_dat %>%
+  dplyr::select(-analyte) %>%
+  pivot_wider(values_from = conc, names_from = mab) %>%
+  mutate(
+    titer_1 = bNAb1 / IC801,
+    titer_2 = bNAb2 / IC802,
+    titer_3 = bNAb3 / IC803,
+    max_single_titer = pmax(titer_1, titer_2, titer_3),
+    min_single_titer = pmin(titer_1, titer_2, titer_3),
+    additivity = titer_1+titer_2 + titer_3,
+    BlissHill = calc_3bnab_BHtiter(titer_1, titer_2, titer_3, titer_target = 0.8)
+  )%>%
+  gather(interaction, titer, max_single_titer:BlissHill) %>%
+  dplyr::select(time, interaction, titer) %>%
+  mutate(virus = "Virus C")
+  
+
+all_pkpd_titer_id80 = bind_rows(single_sensitive_id80, 
+                                double_sensitive_id80, 
+                                triple_sensitive_id80)
+
+```
+
+
+```{r plt-ID80}
+
+all_pkpd_titer_id80 %>%
+  mutate(interaction = factor(interaction, levels = c(
+    "single_sensitive",
+    "min_single_titer",
+    "max_single_titer",
+    "additivity",
+    "BlissHill"
+  ))) %>%
+  ggplot(aes(x = time, y = pmax(titer, 20), colour = interaction)) +
+  geom_line() +
+  scale_y_log10(breaks = c(20, 100, 1000), labels = c("<20", "100", "1000"), limits = c(NA, NA)) +
+  labs(y = "Predicted experimental ID80 titer") +
+  facet_wrap(~virus)
+
+```
+
+
+```{r plt-both}
+
+mutate(all_pkpd_titer_id80, level = "ID80") %>%
+  bind_rows(mutate(all_pkpd_titer, level = "ID50")) %>%
+  mutate(interaction = factor(interaction, levels = c(
+    "single_sensitive",
+    "min_single_titer",
+    "max_single_titer",
+    "additivity",
+    "BlissHill"
+  ))) %>%
+  ggplot(aes(x = time, y = pmax(titer, 20), 
+             colour = interaction, linetype = level)) +
+  geom_line() +
+  scale_y_log10(breaks = c(20, 100, 1000), labels = c("<20", "100", "1000"), limits = c(NA, NA)) +
+  labs(y = "Predicted experimental titer") +
   facet_wrap(~virus)
 
 ```
