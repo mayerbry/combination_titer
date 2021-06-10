@@ -137,7 +137,7 @@ double_sensitive_id80 = pk_dat %>%
          max_single_titer = pmax(titer_1, titer_2),
          min_single_titer = pmin(titer_1, titer_2),
          additivity = titer_1 + titer_2,
-         BlissHill = calc_2bnab_BHtiter(titer_1, titer_2, titer_target = 0.8)
+         BlissHill = calc_2bnab_BHtiter(titer_1*4, titer_2*4, titer_target = 0.8)
          )%>%
   gather(interaction, titer, max_single_titer:BlissHill) %>%
   dplyr::select(time, interaction, titer) %>%
@@ -153,7 +153,7 @@ triple_sensitive_id80 = pk_dat %>%
     max_single_titer = pmax(titer_1, titer_2, titer_3),
     min_single_titer = pmin(titer_1, titer_2, titer_3),
     additivity = titer_1+titer_2 + titer_3,
-    BlissHill = calc_3bnab_BHtiter(titer_1, titer_2, titer_3, titer_target = 0.8)
+    BlissHill = calc_3bnab_BHtiter(titer_1*4, titer_2*4, titer_3*4, titer_target = 0.8)
   )%>%
   gather(interaction, titer, max_single_titer:BlissHill) %>%
   dplyr::select(time, interaction, titer) %>%
