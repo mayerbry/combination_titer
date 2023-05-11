@@ -1,5 +1,6 @@
 # Bryan Mayer
 # 5-20-2021
+# Update: 5-11-2023, fix bug in 3Ab->2Ab; add minimum titer when titer < 1 (instead of error)
 
 # BH titer: common factor applied to each individual Ab concentration that reduces
 # neutralization to 50%
@@ -12,6 +13,8 @@
 #' @param ID50_2 ratio of concentration to IC50 for second Ab
 #' @param ID50_3 ratio of concentration to IC50 for third Ab
 #' @param titer_target goal combination titer endpoint: 0.5 = ID50, 0.8 = ID80
+#' @param min_titer_return smallest triple BH titer returned (default 0.01)
+#' @param NaN_as_NA arbitrarily large titers returned as missing
 #'
 #' This function is vectorized for use over PK
 #'
@@ -19,7 +22,9 @@
 #' @export
 #'
 #' @examples
-calc_3bnab_BHtiter = function(ID50_1, ID50_2, ID50_3, titer_target = 0.5, NaN_as_NA = F){
+calc_3bnab_BHtiter = function(ID50_1, ID50_2, ID50_3, titer_target = 0.5, 
+                              min_titer_return = 1e-2,
+                              NaN_as_NA = F){
   stopifnot(titer_target > 0 & titer_target < 1)
   # if a row is all zeros, this is tracked then 0 is returned
   all_zeros = which(ID50_1 < sqrt(.Machine$double.eps) &
@@ -35,8 +40,8 @@ calc_3bnab_BHtiter = function(ID50_1, ID50_2, ID50_3, titer_target = 0.5, NaN_as
   ID50_3 = pmax(ID50_3, sqrt(.Machine$double.eps))
 
   id50_dat = data.frame(a = ID50_1, b = ID50_2, c = ID50_3)
+  id50_dat$median_row = apply(id50_dat, 1, median)
   id50_dat$max_row = pmax(id50_dat$a, id50_dat$b, id50_dat$c)
-  id50_dat$min_row = pmin(id50_dat$a, id50_dat$b, id50_dat$c)
 
   id50_dat$ID = NA_real_
 
@@ -44,16 +49,22 @@ calc_3bnab_BHtiter = function(ID50_1, ID50_2, ID50_3, titer_target = 0.5, NaN_as
   if(length(any_zeros) > 0){
 
     #browser()
-    id50_dat$ID[any_zeros] = .calc_2bnab_BHIDxx(ID50a = id50_dat$min_row[any_zeros],
+    id50_dat$ID[any_zeros] = .calc_2bnab_BHIDxx(ID50a = id50_dat$median_row[any_zeros],
                                                 ID50b = id50_dat$max_row[any_zeros],
                                                 titer_target = titer_target,
                                                 NaN_as_NA = NaN_as_NA)
-    id50_dat$ID[-any_zeros] = .calc_3bnab_BHIDxx(id50_dat[-any_zeros,],
-                                                 titer_target = titer_target,
-                                                 NaN_as_NA = NaN_as_NA)
+    
+    if(length(id50_dat[-any_zeros,] > 0)){
+      id50_dat$ID[-any_zeros] = .calc_3bnab_BHIDxx(id50_dat[-any_zeros,],
+                                                   titer_target = titer_target,
+                                                   min_titer_return = min_titer_return,
+                                                   NaN_as_NA = NaN_as_NA)
+    }
+
   } else{
     id50_dat$ID = .calc_3bnab_BHIDxx(id50_dat,
       titer_target = titer_target,
+      min_titer_return = min_titer_return,
       NaN_as_NA = NaN_as_NA)
   }
 
@@ -97,14 +108,19 @@ calc_2bnab_BHtiter = function(ID50_1, ID50_2, titer_target = 0.5, NaN_as_NA = F)
   x^3 * termA + x^2 * termB + x * termC - termD
 }
 
-.calc_3bnab_BHIDxx = function(ID50dat, titer_target = 0.5, NaN_as_NA = F){
+.calc_3bnab_BHIDxx = function(ID50dat, titer_target, min_titer_return, NaN_as_NA = F){
 
+  # returns a fixed value when root outside of the interval
+  # like a tryCatch
+  safe_uniroot = purrr::safely(uniroot, 
+                               otherwise = list(root = 1/min_titer_return))
+  
   x = purrr::map_dbl(1:nrow(ID50dat), function(i){
 
-    res = uniroot(.BH_cubic_fun, interval = c(0, 1),
+    res = safe_uniroot(.BH_cubic_fun, interval = c(0, 1/min_titer_return),
                   ID50a = ID50dat$a[i], ID50b = ID50dat$b[i], ID50c = ID50dat$c[i],
                   titer_target = titer_target, tol = .Machine$double.eps ^ 0.5)
-    res$root
+    res$result$root
 
   })
 
